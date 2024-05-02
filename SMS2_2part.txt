@@ -1,0 +1,296 @@
+T= readtable("GoldUp.csv");
+%--------------------------SALVATAGGIO VARIABILI-------------------------
+gold=T{:,2}     %Gold_Price
+cpi=T{:,7}      %CPI
+dates=T{:,1}    %Date
+B=cell2mat(dates)   %Converto la cella delle date in un matrice di caratteri
+for(i=1:1:239)  %Ciclo for che va da 1 a 239 con incremento di 1
+    Str=B(i,:)      %Salvo in Str tutta la riga della i-esima della matrice
+    newS=convertCharsToStrings(Str)     %Da caratteri converto in stringa
+    BB(i)=extractBetween(newS,7,10)     %Tramite la funzione estraggo la stringa contanuta fra la 7 posizione e 10
+end
+BB=str2double(BB)
+BB=BB'      %Converto in double e trasposto per avere un vettore di soli anni
+%--------------------------GRAFICI PRELIMINARI---------------------------
+figure
+plot(BB,gold,'o')       %Guardo il grafico dell'oro negli anni
+title('{Prezzo oro dal 2000 al 2020}')
+axis tight
+figure
+plot(BB,cpi,'o')         %Guardo il grafico del CPI negli anni
+title('{Consumer Price Index dal 2000 al 2020}')
+axis tight
+
+corrcoef(cpi, gold)     %0.959
+
+figure
+scatter(cpi, gold)      %Grafico con CPI come x e gold come y
+xlabel('cpi')
+ylabel('gold')
+%%Regressione lineare Semplice
+uno=ones(239,1)
+Cpi=[uno,cpi]
+Modello=stepwiselm(Cpi,gold,'constant','Upper','linear')    %Utilizzo il comando stepwiselm per la regressione specificando che sia lineare             
+Beta_cap=Modello.Coefficients.Estimate      %Beta cappello
+Residui = Modello.Residuals.Raw     %Vettore residiu
+Media=mean(Residui) %Media dei residui bassa tendente a 0(1.47e-11)
+%Plot dei residui
+figure
+plot(Residui)
+h1 = gca;
+hold on
+plot(h1.XLim,[0 0],'r:')    %Linea
+title('{\bf Residual}')
+hold off
+%Plot autocorrelazione
+figure
+subplot(2,1,1)
+autocorr(Residui)
+subplot(2,1,2)
+parcorr(Residui)
+hold off
+%Stazionarietá
+h=kpsstest(Residui)         %h=1 non stazionario
+h1=kpsstest(cpi)            %h=1 non stazionario
+h2=kpsstest(gold)           %h=1 non stazionario
+hd=kpsstest(diff(Residui, 2))       %h=0 stazionario
+hd1=kpsstest(diff(cpi, 2))       %h=0 stazionario
+hd2=kpsstest(diff(gold, 2))       %h=0 stazionario
+%Plot Cpi differenziato,Gold differenziato
+figure
+plot(diff(cpi, 2))
+title('cpi differenziato')
+figure
+plot(diff(gold, 2))
+title('Gold differenziato')
+%Regressione lineare con i dati differenziati
+GoldD = diff(log(gold), 2); 
+CpiD= diff(log(cpi), 2);
+unod=ones(237,1)
+CpiD1=[unod,CpiD]
+ModelloDiff=stepwiselm(CpiD1,GoldD,'constant','Upper','linear')
+Beta_capDiff=ModelloDiff.Coefficients.Estimate      %Beta cappello
+ResiduiDiff = ModelloDiff.Residuals.Raw
+MediaDiff=mean(ResiduiDiff)      %Media dei residui bassa tendente a 0(-1.63e-18)
+hDiff=kpsstest(ResiduiDiff)       %h=0 stazionario
+%Plot Residui Differenziati
+figure
+plot(ResiduiDiff);
+h2 = gca;
+hold on
+plot(h2.XLim,[0 0],'r:')    %linea
+title('Residui Differenziati')
+hold off
+%Plot autocorrelazione dei residui
+figure
+subplot(2,1,1)
+autocorr(ResiduiDiff)
+subplot(2,1,2)
+parcorr(ResiduiDiff)
+%-----------------------------ANALIS DEGLI ERRORI--------------------
+AR1=arima(1, 0, 0)      %Modello 1 un AR(1)
+MA1=arima(0, 0, 1)      %Modello 2 un MA(1)
+ARMA11=arima(1, 0, 1)       %Modello 3 un ARMA(1,1)
+M1=estimate(AR1, ResiduiDiff)       %Stimo i modelli
+M2=estimate(MA1, ResiduiDiff)
+M3=estimate(ARMA11, ResiduiDiff)
+AIC1=summarize(M1)  %Calcolo dei AIC
+AIC2=summarize(M2)
+AIC3=summarize(M3)
+%Analisi residui sul modello arma dei residui correlati
+%ARMA11=arima(1, 0, 1)
+REs=infer(M3,ResiduiDiff)       %Calcolo residui per fare il test
+hh=kpsstest(REs)        %h=0 stazionari
+ans=AIC1.AIC
+ans1=AIC2.AIC       %AIC piu basso
+ans2=AIC3.AIC
+%%Modello AR
+Model=regARIMA('ARLags', 1)
+ModelEstimate=estimate(Model, GoldD(1:200),'X',CpiD(1:200),'Display','params')
+ResMod=infer(ModelEstimate, GoldD(1:200), 'X',CpiD(1:200))
+Standard=ResMod/sqrt(ModelEstimate.Variance)          %Residui Standardizzati
+%Plots
+figure
+subplot(2,2,1)
+plot(1:200, ResMod)
+title('Standardized Residuals')
+subplot(2,2,2)
+histfit(Standard,10)
+title('Standardized Residuals')
+subplot(2,2,3)
+autocorr(Standard)
+subplot(2,2,4)
+parcorr(Standard)
+%Modello MA
+Model1=regARIMA('MALags', 1)
+ModelEstimate1= estimate(Model1,GoldD(1:200),'X',CpiD(1:200),'Display','params')
+ResMod1=infer(ModelEstimate1, GoldD(1:200), 'X',CpiD(1:200))
+Standard1=ResMod1/sqrt(ModelEstimate1.Variance) 
+%Plots
+figure
+subplot(2,2,1)
+plot(1:200, ResMod1)
+title('Standardized Residuals')
+subplot(2,2,2)
+histfit(Standard1,10)
+title('Standardized Residuals')
+subplot(2,2,3)
+autocorr(Standard1)
+subplot(2,2,4)
+parcorr(Standard1)
+%Modello ARMA
+Model2=regARIMA('ARLags', 1, 'MALags', 1)
+ModelEstimate2= estimate(Model2,GoldD(1:200),'X',CpiD(1:200),'Display','params')
+ResMod2=infer(ModelEstimate2, GoldD(1:200), 'X',CpiD(1:200))
+Standard2=ResMod2/sqrt(ModelEstimate2.Variance) 
+%Plots
+figure
+subplot(2,2,1)
+plot(1:200, ResMod2)
+title('Standardized Residuals')
+subplot(2,2,2)
+histfit(Standard2,10)
+title('Standardized Residuals')
+subplot(2,2,3)
+autocorr(Standard2)
+subplot(2,2,4)
+parcorr(Standard2)
+%Forecast 
+[yF1,yMSE1] = forecast(ModelEstimate, 37,'Y0',GoldD(1:200), 'X0',CpiD(1:200,:),'XF',CpiD(201:end,:))
+[yF2,yMSE2] = forecast(ModelEstimate1, 37,'Y0',GoldD(1:200), 'X0',CpiD(1:200,:),'XF',CpiD(201:end,:))
+[yF3,yMSE3] = forecast(ModelEstimate2, 37,'Y0',GoldD(1:200), 'X0',CpiD(1:200,:),'XF',CpiD(201:end,:))
+RMSE1=sum(yMSE1)
+RMSE2=sum(yMSE2)
+RMSE3=sum(yMSE3)        %Piu basso 0.0882 ma AIC piu basso é il modello 2, scelgo lo stesso come modello migliore l'ARMA dato che la differenza tra AIC é pochissima siamo lí praticamente invece RMSE di nota abbastanza                    
+
+[yF,yMSE] = forecast(ModelEstimate2, 37,'Y0',GoldD(1:230), 'X0',CpiD(1:200,:),'XF',CpiD(201:end,:));
+figure
+plot(GoldD,'Color',[.7,.7,.7])
+hold on
+plot(201:237,yF,'b','LineWidth',2)
+plot(201:237,yF+1.96*sqrt(yMSE),'r:','LineWidth',2)
+plot(201:237,yF-1.96*sqrt(yMSE),'r:','LineWidth',2)
+h = gca;
+ph = patch([repmat(201,1,2) repmat(237,1,2)],[h.YLim fliplr(h.YLim)],[0 0 0 0],'b')
+ph.FaceAlpha = 0.1;
+legend('Observed','Forecast','95% Forecast Interval','Location','Best')
+title(['30-Period Forecasts and Approximate 95% Forecast Intervals'])
+axis tight
+hold off
+
+%-----------------------------SPACE-MODELS-----------------------------------------
+%clear
+%T= readtable("GoldUp.csv");
+%--------------------------SALVATAGGIO VARIABILI-------------------------
+gold=T{:,2}     %Gold_Price
+Gold=log(gold)      %Lo voglio in logaritmo
+%Plot della y in logaritmo
+figure
+title('Gold')
+plot(Gold)      %Grafico iniziale per avere un'idea iniziale
+%MODELLO LOCALE A LIVELLO STOCASTICO
+A=1
+B=NaN
+C=1
+D=NaN
+i=[1, 1]    %Da dove iniziamo
+Modell=ssm(A,B,C,D)     %Gli passiamo le matrici(B,N settate a NaN)
+ModellEstimate=estimate(Modell,Gold,i,'lb',[0, 0])
+ErrorOss=ModellEstimate.D^2         %D^2 é equivalente a D*D'
+ErrorSta=ModellEstimate.B^2         %B^2 é equivalente a B*B'
+ModelSmooth=smooth(ModellEstimate,Gold)
+%Plot della funzione Smoothata
+figure
+title('Funzione Smooth')
+plot(Gold,'LineWidth',2)
+hold on
+plot(ModelSmooth,'--','LineWidth',2)
+hold off
+%Analisi Residui
+Res=Gold-ModelSmooth    %Formula per calcolare i residui
+%Plot residui a livello stocastico
+figure
+plot(Res)       %Media é 0
+h1 = gca;
+hold on
+plot(h1.XLim,[0 0],'r:')
+title('{\bf Residual}')
+hold off
+%Plot autocorrelazione
+figure
+subplot(2,1,1)
+autocorr(Res)
+subplot(2,1,2)
+parcorr(Res)
+hold off
+%Test stazionarieta
+Test=kpsstest(Res)          %h=0 test superato
+AR1_1=arima(1,0,0)          %Costruiamo 3 modelli, AR(1),MA(1),ARMA(1,1) e vediamo chi ha l'AIC piú basso ossia il modello che mi esprime meglio
+MA1_1=arima(0,0,1)
+ARMA11_1=arima(1, 0, 1)
+M1_1=estimate(AR1_1,Res)
+M2_1=estimate(MA1_1,Res)
+M3_1=estimate(ARMA11_1,Res)
+AIC1_1=summarize(M1_1)
+AIC2_1=summarize(M2_1)
+AIC3_1=summarize(M3_1)
+ANS=AIC1_1.AIC
+ANS1=AIC2_1.AIC       %AIC piu basso(MA)
+ANS2=AIC3_1.AIC
+%Modello che ci esprime meglio é il MA(1)
+%MODELLO LOCALE LINEARE DETERMINISTICO
+t=1:length(Gold)
+Modell1=stepwiselm(t,Gold,'constant','Upper','linear')
+Beta_cap=Modell1.Coefficients.Estimate      %Beta cappello
+ResiduiL = Modell1.Residuals.Raw
+MRes=mean(ResiduiL)         %Tende a zero, numero piccolissimo
+%Plot Residui
+figure
+hold on
+title('Residuals')
+plot(ResiduiL)
+yline(MRes)
+hold off
+Err=Modell1.MSE     %0.0423 molto piccolo
+%Analisi residui
+%Plot autocorrelazione
+figure
+subplot(2,1,1)
+autocorr(ResiduiL)
+subplot(2,1,2)
+parcorr(ResiduiL)
+hold off
+%Test stazionarieta
+TestS=kpsstest(ResiduiL)          %h=1 test non superato non prendo gli AIC per il confronto
+                                  %Passo ad un'altro modello
+%MODELLO LOCALE A LIVELLO DETERMINISTIO
+a=1
+b=0
+c=1
+d=NaN
+ii=1
+Modell3=ssm(a,b,c,d)
+ModellEstimate3=estimate(Modell3,Gold,ii,'lb',0)
+VarOss=ModellEstimate3.D.^2     %D^2 equivale a D*D'
+ModellSmooth3=smooth(ModellEstimate3,Gold)
+RES=Gold-ModellSmooth3
+%Plot residui a livello deterministico
+figure
+plot(RES)       %Media é 0
+h1 = gca;
+hold on
+plot(h1.XLim,[0 0],'r:')
+title('{\bf Residual}')
+hold off
+%Plot autocorrelazione
+figure
+subplot(2,1,1)
+autocorr(RES)
+subplot(2,1,2)
+parcorr(RES)
+hold off
+%Test stazionarieta
+T=kpsstest(RES)          %h=1 test non superato
+%TRA I 3 MODELLI CHE VOLEVAMO QUELLO CHE MI ESPRIME MEGLIO É IL PRIMO OSSIA
+%QUELLO LOCALE A LIVELLO STOCASTICO DATO CHE I 2 SEGUENTI NON HANNO PASSATO
+%IL TEST
